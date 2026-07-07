@@ -1,0 +1,53 @@
+version: '3.5'
+services:
+  third_party:
+    image: harbor.ks.x/crayon/orin:ros_humble_third_party_202306141403
+    container_name: third_party
+    network_mode: host
+    volumes:
+      - third_party:/opt/third_party
+  tensorflow:
+    image: harbor.ks.x/crayon/orin:tensorflow_volume_2.10.0_nv22.10
+    container_name: tensorflow
+    network_mode: host
+    volumes:
+      - tensorflow:/opt/tensorflow
+  ros2:    
+    image: harbor.ks.x/crayon/orin:r35.1.0_cuda11.4_ros_humble_202305261021
+    container_name: kernelsoft-$DOCKER_USERS
+    hostname: in-dev-docker
+    pid: host
+    network_mode: host
+    stdin_open: true
+    tty: true
+    privileged: true
+    working_dir: /workspace
+    depends_on:
+      - tensorflow
+      - third_party
+    extra_hosts:
+      - in-dev-docker:127.0.0.1
+    environment:
+      DISPLAY: :1
+      DOCKER_USER: $DOCKER_USERS
+      USER: $DOCKER_USERS
+      DOCKER_USER_ID: $USER_ID
+      DOCKER_GRP: $DOCKER_USERS
+      DOCKER_GRP_ID: $GROUP_ID
+      USE_GPU_HOST: 1
+      NVIDIA_VISIBLE_DEVICES: all
+      HISTFILE: /workspace/.dev_bash_history
+      PYTHONPATH: /opt/tensorflow:/usr/lib/aarch64-linux-gnu/
+      LD_LIBRARY_PATH: /usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu
+    volumes:
+      - /dev/null:/dev/raw1394
+      - /dev:/dev
+      - /media:/media
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /etc/localtime:/etc/localtime:ro
+      - tensorflow:/opt/tensorflow
+      - third_party:/opt/third_party
+      - ${WORKSPACE_PATH}:/workspace
+volumes:
+  tensorflow:
+  third_party:  

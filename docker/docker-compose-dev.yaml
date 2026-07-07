@@ -1,0 +1,27 @@
+version: '3.5'
+services:
+  cross-proj:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${IMAGE_NAME:-cross-proj-p550:20250730}
+    container_name: ${CONTAINER_NAME:-cross-proj-dev}
+    hostname: cross-proj-dev
+    privileged: true
+    pid: host
+    network_mode: host
+    stdin_open: true
+    tty: true
+    working_dir: /workspace
+    environment:
+      DOCKER_USER: ${DOCKER_USER:-dev}
+      DOCKER_USER_ID: ${DOCKER_USER_ID:-1000}
+      DOCKER_GRP: ${DOCKER_GRP:-dev}
+      DOCKER_GRP_ID: ${DOCKER_GRP_ID:-1000}
+      HISTFILE: /workspace/.dev_bash_history
+    volumes:
+      - /dev:/dev
+      - /media:/media
+      - /etc/localtime:/etc/localtime:ro
+      - ${WORKSPACE_PATH:-..}:/workspace
+    command: tail -f /dev/null

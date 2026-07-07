@@ -1,0 +1,57 @@
+# cross-proj 快速命令
+
+# 构建并启动 Docker 容器，容器由 docker-compose-dev.yaml 管理
+./docker/docker.sh compile
+./docker/docker.sh start
+
+# 进入容器后统一在 /workspace 操作
+cd /workspace
+
+
+# make_desktop_images 构建前准备；SSH 中断后用 recover 清理本工程残留
+./scripts/prepare_desktop_build_env.sh setup
+./scripts/prepare_desktop_build_env.sh status
+./scripts/prepare_desktop_build_env.sh recover
+
+# 应用 SDK 兼容性补丁，所有 source 修改都在该脚本中维护
+./scripts/patch_sdk_sources.sh
+
+# 构建精简系统：bootloader + kernel + minimal root/boot ext4
+./scripts/build_minimal_system.sh P550
+
+# 构建桌面系统
+source ./scripts/source_sdk_env.sh P550
+cd /workspace/eswin-sdk-20250730
+make_desktop_images
+cd /workspace
+
+# 挂载最新 root/boot ext4；挂载前会把 rootfs 扩容到默认至少 10G
+./scripts/chroot_mount.sh mount P550
+
+# 检查 chroot 软件包状态
+./scripts/chroot_exec.sh P550 'dpkg --audit && apt-get check'
+
+# 在 chroot 中扩展依赖，例如 yaml-cpp
+./scripts/chroot_exec.sh P550 'apt update && apt install -y libyaml-cpp-dev'
+
+# 安装 yolov5s 交叉编译依赖
+./scripts/install_chroot_deps.sh P550
+
+# 链接 mounted rootfs 为 /opt/riscv/sysroot
+./scripts/use_rootfs_sysroot.sh link P550
+
+# 交叉编译 yolov5s
+source ./scripts/source_sdk_env.sh P550
+cd /workspace/yolov5s/src
+./build.sh /opt/riscv/sysroot
+file build/sample_npu
+riscv64-unknown-linux-gnu-readelf -h build/sample_npu | grep -E 'Machine|Flags'
+
+# 清理挂载并恢复原工具链 sysroot
+cd /workspace
+./scripts/riscv_env_setup.sh /workspace P550 cleanup
+
+# 修复已生成的桌面 root.ext4 中未完成的 supertuxkart/apt 状态
+# 该脚本会在 chroot 外用 dpkg --root 安装 supertuxkart-data，避免 qemu 解压大包失败。
+./scripts/repair_desktop_rootfs.sh P550
+./scripts/chroot_exec.sh P550 'dpkg --audit && apt-get check'

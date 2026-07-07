@@ -1,0 +1,1 @@
+{"model_list":[{"model_batch":1,"model_cost":7.1379110657908287,"model_device":1,"model_file":"git_yolov5s_640_mix_1x3x640x640_dyn_npu_b1.model","model_type":"npu"}]}

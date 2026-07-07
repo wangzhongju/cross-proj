@@ -1,0 +1,27 @@
+{
+    "input_format": "RGB",
+    "channel_first": true,
+    "keep_ratio": true,
+    "resize_shape": [
+        640
+    ],
+    "crop_shape": [
+        640,
+        640
+    ],
+    "std": [
+        1,
+        1,
+        1
+    ],
+    "mean": [
+        0,
+        0,
+        0
+    ],
+    "norm": true,
+    "keep_long_side": true,
+    "padding_data": 114,
+    "padding_position": "Half",
+    "scale": 0.007874015718698502
+}
