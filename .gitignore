@@ -24,3 +24,5 @@ P550
 linux-eswin
 uboot-eswin
 opensbi-eswin
+proj/*
+!proj/yolov5s
