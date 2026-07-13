@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pahole libconfuse-dev mtools rsync debootstrap qemu-user-static \
     qemu-utils binfmt-support mmdebstrap arch-test ca-certificates git file bc \
     kmod cpio python3 python3-pip python3-venv jq less locales \
+    protobuf-compiler \
     android-sdk-platform-tools-common android-tools-adb android-tools-fastboot \
     && locale-gen en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*

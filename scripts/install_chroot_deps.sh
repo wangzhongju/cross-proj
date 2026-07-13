@@ -24,7 +24,8 @@ apt update
 apt install -y \
   gcc g++ build-essential cmake pkg-config \
   libc6-dev libstdc++-14-dev \
-  libopencv-dev opencv-data ffmpeg \
+  ffmpeg \
+  libprotobuf-dev \
   es-sdk-log es-sdk-memory es-sdk-memcp es-sdk-cipher es-sdk-numa \
   es-sdk-common es-sdk-video-utils es-sdk-sys es-sdk-video es-hae \
   es-video-common es-mpp es-sdk-npu es-sdk-dsp es-sdk-audio \
