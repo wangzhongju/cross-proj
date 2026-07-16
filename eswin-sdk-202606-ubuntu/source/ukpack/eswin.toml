@@ -1,0 +1,14 @@
+linux-eic7700 (VERSION.PATCHLEVEL.SUBLEVEL-DATE_STR) noble; urgency=medium
+
+ * update kernel version to VERSION.PATCHLEVEL.SUBLEVEL-DATE_STR
+
+ -- robot <robot@eswincomputing.com> STR_DATE +0800
+---
+arch = "riscv64"
+# Use the architecture's upstream defconfig
+config = "eic7700_pm_defconfig"
+orig = "vVERSION.PATCHLEVEL.SUBLEVEL"
+version = "VERSION.PATCHLEVEL.SUBLEVEL"
+
+[pkg.source]
+Maintainer = "robot@eswincomputing.com"

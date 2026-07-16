@@ -1,0 +1,11 @@
+# To override fields include the Machine field and the fields you wish to
+# override.
+#
+# e.g. to override Boot-Device on the Dreamplug to sdb rather than sda
+#
+#Machine: Globalscale Technologies Dreamplug
+#Boot-Device: /dev/sdb1
+
+Machine: SiFive HiFive Premier P550
+Kernel-Flavors: any
+DTB-Id: eswin/eic7700-hifive-premier-p550.dtb

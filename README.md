@@ -118,3 +118,17 @@ cd /workspace
 ## 详细过程
 
 完整从零构建、系统镜像编译、chroot 扩展依赖、supertuxkart 本地 deb 安装、问题处理记录见 [UPDATE.md](UPDATE.md)。脚本作用说明见 [scripts/README.md](scripts/README.md)。
+
+## 多版本 SDK
+
+脚本默认使用 `SDK_VERSION=20250730`。官方 202606 Ubuntu SDK 放在 `eswin-sdk-202606-ubuntu` 时，可通过环境变量切换：
+
+```bash
+cd /workspace
+SDK_VERSION=202606 ./docker/docker.sh compile
+SDK_VERSION=202606 ./docker/docker.sh start
+SDK_VERSION=202606 ./scripts/patch_sdk_sources.sh
+SDK_VERSION=202606 ./scripts/build_minimal_system.sh P550
+```
+
+202606 的 P550 实际输出目录是 `eswin-sdk-202606-ubuntu/eic7700-hifive-premier-p550/output`，脚本会自动映射。

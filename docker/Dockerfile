@@ -11,10 +11,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pahole libconfuse-dev mtools rsync debootstrap qemu-user-static \
     qemu-utils binfmt-support mmdebstrap arch-test ca-certificates git file bc \
     kmod cpio python3 python3-pip python3-venv jq less locales \
+    python3-tomli snapd ubuntu-dev-tools germinate \
     protobuf-compiler \
     android-sdk-platform-tools-common android-tools-adb android-tools-fastboot \
     && locale-gen en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
+
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
 
 COPY riscv64-glibc-ubuntu-24.04-gcc-nightly-2025.01.20-nightly.tar.xz /tmp/toolchain.tar.xz
 RUN tar -xf /tmp/toolchain.tar.xz -C /opt \

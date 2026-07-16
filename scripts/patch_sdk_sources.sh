@@ -2,7 +2,9 @@
 set -euo pipefail
 
 WORKSPACE=${WORKSPACE:-/workspace}
-SDK_DIR=${SDK_DIR:-$WORKSPACE/eswin-sdk-20250730}
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/sdk_common.sh"
+sdk_export_selection
 UBOOT_DIR=${UBOOT_DIR:-$SDK_DIR/source/uboot-eswin}
 
 patch_uboot() {
@@ -27,7 +29,19 @@ if splash.exists():
     if '#include <dm/device-internal.h>' not in s:
         s = s.replace(needle, needle + '#include <dm/device-internal.h>\n')
     splash.write_text(s)
+ctype = uboot / 'include/ctype.h'
+if ctype.exists() and not ctype.is_symlink():
+    try:
+        content = ctype.read_text().strip()
+    except UnicodeDecodeError:
+        content = ''
+    if content == 'linux/ctype.h':
+        ctype.unlink()
+        ctype.symlink_to('linux/ctype.h')
 PY
+  if [ -d "$uboot_dir/scripts" ]; then
+    find "$uboot_dir/scripts" -maxdepth 1 -type f -name "*.sh" -exec chmod a+x {} +
+  fi
   echo "u-boot patches applied: $uboot_dir"
 }
 
@@ -61,9 +75,21 @@ loader = kernel / 'drivers/soc/eswin/ai_driver/dsp/mloader/xt_mld_loader.c'
 if loader.exists():
     s = loader.read_text()
     s = s.replace('xtmld_ptr ret = ((((uint32_t)ptr + align_adj) & ~(align - 1)) + offset);', 'xtmld_ptr ret = (xtmld_ptr)(unsigned long)((((uint32_t)(unsigned long)ptr + align_adj) & ~(align - 1)) + offset);')
+    s = s.replace('xtmld_ptr ret = (xtmld_ptr)((((uint32_t)ptr + align_adj) & ~(align - 1)) + offset);', 'xtmld_ptr ret = (xtmld_ptr)(unsigned long)((((uint32_t)(unsigned long)ptr + align_adj) & ~(align - 1)) + offset);')
     s = s.replace('xtmld_ptr ret_hi = (uint64_t)ptr & ADDR64_HI;', 'unsigned long ret_hi = (unsigned long)ptr & ADDR64_HI;')
+    s = s.replace('xtmld_ptr ret_hi = (xtmld_ptr)((uint64_t)ptr & ADDR64_HI);', 'unsigned long ret_hi = (unsigned long)ptr & ADDR64_HI;')
     s = s.replace('ret = (xtmld_ptr)((uint64_t)ret_hi | (uint64_t)ret);', 'ret = (xtmld_ptr)(ret_hi | (unsigned long)ret);')
     loader.write_text(s)
+relocate = kernel / 'drivers/soc/eswin/ai_driver/dsp/mloader/xt_mld_relocate.c'
+if relocate.exists():
+    s = relocate.read_text()
+    s = s.replace('xtmld_ptr raddr;\n\t\tstatus = reloc_addr_value(lib_info, load_32(addr) + rela->r_addend,',
+                  'Elf32_Addr raddr;\n\t\tstatus = reloc_addr_value(lib_info, load_32(addr) + rela->r_addend,')
+    s = s.replace('status = reloc_addr_value(lib_info, val + rela->r_addend,\n\t\t\t\t    ((xtmld_ptr *)&val));',
+                  'status = reloc_addr_value(lib_info, val + rela->r_addend,\n\t\t\t\t    &val);')
+    s = s.replace('xtmld_ptr raddr;\n\txtmld_result_code_t status;\n\t// r_offset is the location of source in PIL',
+                  'Elf32_Addr raddr;\n\txtmld_result_code_t status;\n\t// r_offset is the location of source in PIL')
+    relocate.write_text(s)
 logo = kernel / 'drivers/video/logo/Makefile'
 if logo.exists():
     s = logo.read_text()
@@ -75,17 +101,33 @@ if platform.exists():
     s = platform.read_text()
     if '#include <linux/clk-provider.h>' not in s:
         s = s.replace('#include <linux/clk.h>\n', '#include <linux/clk.h>\n#include <linux/clk-provider.h>\n')
+    s = s.replace('hw->pts_iova = NULL;', 'hw->pts_iova = 0;')
     platform.write_text(s)
 ioctl = kernel / 'drivers/soc/eswin/ai_driver/dsp/dsp_ioctl.c'
 if ioctl.exists():
     s = ioctl.read_text()
+    if '#include <linux/iommu.h>' not in s:
+        s = s.replace('#include <linux/dma-direct.h>\n', '#include <linux/dma-direct.h>\n#include <linux/iommu.h>\n')
     s = s.replace('user_req->callback = task->task.callback;', 'user_req->callback = (u64)task->task.callback;')
     s = s.replace('user_req->cbarg = task->task.cbArg;', 'user_req->cbarg = (u64)task->task.cbArg;')
     s = s.replace('retval = dsp_ioctl_unload_op(flip, arg);', 'retval = dsp_ioctl_unload_op(flip, (void __user *)arg);')
     s = s.replace('es_dsp_pm_put_sync(dsp->dev);', 'es_dsp_pm_put_sync(dsp);')
     ioctl.write_text(s)
 PY
+  if [ -d "$kernel_dir/scripts" ]; then
+    find "$kernel_dir/scripts" -maxdepth 1 -type f -name "*.sh" -exec chmod a+x {} +
+  fi
   echo "kernel patches applied: $kernel_dir"
+}
+
+ensure_kernel_source_ready() {
+  local kernel_dir=$1
+  if [ -d "$kernel_dir" ] && [ ! -f "$kernel_dir/Makefile" ]; then
+    local backup
+    backup="${kernel_dir}.incomplete-$(date +%Y%m%d-%H%M%S)"
+    mv "$kernel_dir" "$backup"
+    echo "kernel source is incomplete, moved aside for SDK git clone: $kernel_dir -> $backup"
+  fi
 }
 
 patch_mkimg() {
@@ -185,15 +227,64 @@ PY
   echo "mkimg patches applied: $mkimg_dir"
 }
 
+patch_riscv_gadget() {
+  local gadget_dir=$1
+  if [ ! -d "$gadget_dir" ]; then echo "risc-v-gadget source not found, skip: $gadget_dir" >&2; return 0; fi
+  python3 - "$gadget_dir" <<'PY'
+from pathlib import Path
+import sys
+gadget = Path(sys.argv[1])
+customize_es = gadget / 'customize-es.sh'
+if customize_es.exists():
+    s = customize_es.read_text()
+    s = s.replace("sudo tee /usr/share/initramfs-tools/hooks/no-ai-drivers << 'EOF'",
+                  "cat > /usr/share/initramfs-tools/hooks/no-ai-drivers << 'EOF'")
+    customize_es.write_text(s)
+PY
+  echo "risc-v-gadget patches applied: $gadget_dir"
+}
+
+patch_setenv() {
+  local setenv=$1
+  if [ ! -f "$setenv" ]; then echo "SDK setenv not found, skip: $setenv" >&2; return 0; fi
+  python3 - "$setenv" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+s = path.read_text()
+s = s.replace('echo 2 | sudo update-alternatives --config python3',
+              'sudo update-alternatives --set python3 /usr/bin/python3.12 >/dev/null 2>&1 || true')
+s = s.replace('echo 1 | sudo update-alternatives --config python3',
+              'sudo update-alternatives --set python3 /usr/bin/python3.12 >/dev/null 2>&1 || true')
+s = s.replace('make_all()\n{\n    make_bootchain\n    make_images\n}',
+              'make_all()\n{\n    make_bootchain\n    make_kernel\n    make_images\n}')
+s = s.replace('    sudo mv ${WORK_DIR}/${board_name}/ubuntu_output/*.img ${WORK_DIR}/${board_name}/output/\n',
+              '    sudo mv ${WORK_DIR}/${board_name}/ubuntu_output/*.img ${WORK_DIR}/${board_name}/output/\n    sudo chown "$(id -u):$(id -g)" ${WORK_DIR}/${board_name}/output/*.img 2>/dev/null || true\n')
+path.write_text(s)
+PY
+  echo "setenv patches applied: $setenv"
+}
+
+patch_setenv "$SDK_DIR/setenv.sh"
 patch_uboot "$UBOOT_DIR"
+ensure_kernel_source_ready "$SDK_DIR/source/linux-eswin"
 patch_kernel "$SDK_DIR/source/linux-eswin"
 patch_mkimg "$SDK_DIR/source/mkimg-eswin"
+patch_riscv_gadget "$SDK_DIR/source/risc-v-gadget"
 
 for copied_kernel in "$SDK_DIR"/*/linux-eswin; do
   [ -d "$copied_kernel" ] || continue
   patch_kernel "$copied_kernel"
 done
+for copied_uboot in "$SDK_DIR"/*/uboot-eswin; do
+  [ -d "$copied_uboot" ] || continue
+  patch_uboot "$copied_uboot"
+done
 for copied_mkimg in "$SDK_DIR"/*/mkimg-eswin; do
   [ -d "$copied_mkimg" ] || continue
   patch_mkimg "$copied_mkimg"
+done
+for copied_gadget in "$SDK_DIR"/*/risc-v-gadget; do
+  [ -d "$copied_gadget" ] || continue
+  patch_riscv_gadget "$copied_gadget"
 done

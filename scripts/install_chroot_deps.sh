@@ -3,8 +3,11 @@ set -euo pipefail
 
 MODEL=${1:-P550}
 WORKSPACE=${WORKSPACE:-/workspace}
-SDK_DIR=${SDK_DIR:-$WORKSPACE/eswin-sdk-20250730}
-ROOTFS_DIR=${ROOTFS_DIR:-$SDK_DIR/$MODEL/output/rootfs}
+APT_UBUNTU_PORTS_MIRROR=${APT_UBUNTU_PORTS_MIRROR:-http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports}
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/sdk_common.sh"
+sdk_export_selection
+ROOTFS_DIR=${ROOTFS_DIR:-$SDK_OUTPUT_DIR/rootfs}
 KERNEL_UAPI=$SDK_DIR/source/linux-eswin/include/uapi/linux
 
 if ! mountpoint -q "$ROOTFS_DIR"; then
@@ -17,14 +20,23 @@ if [ -d "$KERNEL_UAPI" ]; then
     sudo cp -an "$KERNEL_UAPI"/*.h "$ROOTFS_DIR/usr/include/linux/" || true
 fi
 
-sudo chroot "$ROOTFS_DIR" /bin/bash -lc '
+sudo chroot "$ROOTFS_DIR" /usr/bin/env APT_UBUNTU_PORTS_MIRROR="$APT_UBUNTU_PORTS_MIRROR" /bin/bash -lc '
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
-apt update
-apt install -y \
+APT_OPTS=(-o Acquire::ForceIPv4=true)
+if [ -n "${APT_UBUNTU_PORTS_MIRROR:-}" ]; then
+  while IFS= read -r -d "" file; do
+    sed -i \
+      -e "s|http://ports.ubuntu.com/ubuntu-ports|${APT_UBUNTU_PORTS_MIRROR}|g" \
+      -e "s|https://ports.ubuntu.com/ubuntu-ports|${APT_UBUNTU_PORTS_MIRROR}|g" \
+      "$file"
+  done < <(find /etc/apt -type f \( -name "*.list" -o -name "*.sources" \) -print0)
+fi
+apt-get "${APT_OPTS[@]}" update
+apt-get "${APT_OPTS[@]}" install -y \
   gcc g++ build-essential cmake pkg-config \
   libc6-dev libstdc++-14-dev \
-  ffmpeg \
+  ffmpeg libavformat-dev libavcodec-dev libavutil-dev libswscale-dev libswresample-dev \
   libprotobuf-dev \
   es-sdk-log es-sdk-memory es-sdk-memcp es-sdk-cipher es-sdk-numa \
   es-sdk-common es-sdk-video-utils es-sdk-sys es-sdk-video es-hae \

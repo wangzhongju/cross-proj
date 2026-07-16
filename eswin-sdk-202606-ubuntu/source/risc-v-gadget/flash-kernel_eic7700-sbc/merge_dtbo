@@ -1,0 +1,216 @@
+#!/bin/bash
+# apply dtbo overlay
+set -e
+CONFIG_FILE="/boot/overlay.txt"
+KERNEL_VERSION="$(uname -r)"
+LINK_DTB="dtb-${KERNEL_VERSION}"
+BASE_DTB_DIR="/boot/dtbs/${KERNEL_VERSION}/eswin"
+BASE_DTB=""
+MAIN_DTB="${BASE_DTB_DIR}/${BASE_DTB}"
+OVERLAY_DIR="${BASE_DTB_DIR}/overlays"
+MERGE_DTB="eic7x-merged.dtb"
+OUTPUT_DTB="/boot/${MERGE_DTB}"
+APPLY_DTB="${BASE_DTB_DIR}/${MERGE_DTB}"
+# global dtbo array
+declare -a DTBO_ARRAY
+
+error_exit() {
+    echo "ERROR: $1"
+    exit 1
+}
+
+array_contains() {
+    local seeking="$1"
+    shift
+    local in=1
+    for element; do
+        if [[ $element == "$seeking" ]]; then
+            in=0
+            break
+        fi
+    done
+    return $in
+}
+
+check_prerequisites() {
+    if [ ! -f "$MAIN_DTB" ]; then
+        error_exit "BASE DTB file not exist: $MAIN_DTB"
+    fi
+    if [ ! -d "$OVERLAY_DIR" ]; then
+        error_exit "Overlay dir not exist: $OVERLAY_DIR"
+    fi
+ 
+    if [ ! -f "$CONFIG_FILE" ]; then
+        error_exit "$CONFIG_FILE not exist"
+    fi
+    return 0
+}
+
+parse_dtbo_value() {
+    local value="$1"
+    value=$(echo "$value" | sed 's/#.*$//')
+    value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    if [[ -z "$value" ]]; then
+        return
+    fi
+    # support split dtbo（blank space、comma、semicolon）
+    local temp_array=()
+    IFS=';' read -ra parts <<< "$value"
+    for part in "${parts[@]}"; do
+        IFS=',' read -ra subparts <<< "$part"
+        for subpart in "${subparts[@]}"; do
+            IFS=' ' read -ra finalparts <<< "$subpart"
+            for finalpart in "${finalparts[@]}"; do
+                finalpart=$(echo "$finalpart" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                if [[ -n "$finalpart" ]]; then
+                    temp_array+=("$finalpart")
+                fi
+            done
+        done
+    done
+    for dtbo in "${temp_array[@]}"; do
+        if ! array_contains "$dtbo" "${DTBO_ARRAY[@]}"; then
+            DTBO_ARRAY+=("$dtbo")
+            echo "Add overlay dtbo: $dtbo"
+        else
+            echo "Skip duplicate overlay dtbo: $dtbo"
+        fi
+    done
+}
+
+read_config() {
+    local config_file="$1"
+    
+    if [ ! -f "$config_file" ]; then
+        return 1
+    fi
+    DTBO_ARRAY=()
+    echo "Parse overlay file: $config_file"
+    
+    while IFS= read -r line; do
+        line=$(echo "$line" | sed 's/#.*$//')
+        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        if [[ -z "$line" ]]; then
+            continue
+        fi
+        if [[ "$line" =~ ^[[:space:]]*([^[:space:]=]+)[[:space:]]*=[[:space:]]*(.*) ]]; then
+            local key="${BASH_REMATCH[1]}"
+            local value="${BASH_REMATCH[2]}"
+            value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            case "$key" in
+                enable_overlay)
+                    ENABLE_OVERLAY="$value"
+                    ;;
+                dtbo)
+                    parse_dtbo_value "$value"
+                    ;;
+            esac
+        fi
+    done < "$config_file"
+    
+    if [ "$ENABLE_OVERLAY" -eq 0 ]; then
+        return 0
+    fi    
+
+    if [ ${#DTBO_ARRAY[@]} -gt 0 ]; then
+        DTBO_LIST="${DTBO_ARRAY[*]}"
+        echo "Parse overlay.txt done: find ${#DTBO_ARRAY[@]} dto"
+        for i in "${!DTBO_ARRAY[@]}"; do
+            echo "  $((i+1)). ${DTBO_ARRAY[i]}"
+        done
+    else
+        DTBO_LIST=""
+        echo "No valid dtbo config"
+    fi
+    return 0
+}
+
+merge_overlays() {
+    local overlay_array=("$@")
+    echo "Start merging ${#overlay_array[@]} overlay dtbo to base dtb"
+    echo "main dtb $MAIN_DTB"
+    cp "$MAIN_DTB" "$OUTPUT_DTB"
+    for overlay_name in "${overlay_array[@]}"; do
+        local overlay_file="${overlay_name}"
+        if [ -f "$overlay_file" ]; then
+            echo "Apply overlay: $overlay_name"
+            if fdtoverlay -i "$OUTPUT_DTB" -o "$OUTPUT_DTB" "$overlay_file"; then
+                echo "  ✓ success apply: $overlay_name"
+            else
+                echo "  ✗ fail apply: $overlay_name"
+                return 1
+            fi
+        else
+            echo "  ⚠ overlay dtbo not exist: $overlay_file"
+            return 1
+        fi
+    done
+    echo "Overlay merge done"
+    return 0
+}
+
+restore_original_dtb() {
+    echo "Revert overlay! Use Default DTB"
+    rm /boot/$LINK_DTB
+    ln -sf $MAIN_DTB /boot/$LINK_DTB    
+}
+
+verify_merge() {
+    local dtb_file="$1"
+    echo "Verifying DTB file..."
+    if [ ! -f "$dtb_file" ]; then
+        error_exit "Applied dtb not exist: $dtb_file"
+    fi
+    local file_size=$(stat -c%s "$dtb_file")
+    if [ "$file_size" -lt 1000 ]; then
+        error_exit "DTB file size not correct: $file_size 字节"
+    fi
+    if ! fdtdump "$dtb_file" > /dev/null 2>&1; then
+        error_exit "Wrong DTB file format"
+    fi
+    echo "DTB verify pass !"
+}
+
+update_base_dtb() {
+    dtb_file=$(find "$BASE_DTB_DIR" -maxdepth 1 -name "*.dtb" -type f ! -path "*/overlays/*" ! -name "$MERGE_DTB")
+    if [ -n "$dtb_file" ]; then
+        BASE_DTB=$(basename "$dtb_file")
+        MAIN_DTB="${BASE_DTB_DIR}/${BASE_DTB}"
+    else
+        echo "Cannot find base dtb file, pls check ${BASE_DTB_DIR} dir!"
+        exit 1
+    fi
+}
+
+main() {
+    update_base_dtb 
+    check_prerequisites || exit 1
+    
+    if read_config "$CONFIG_FILE"; then
+        echo "enable_overlay = ${ENABLE_OVERLAY}"
+    else
+        ENABLE_OVERLAY=0
+    fi
+    
+    if [ "${ENABLE_OVERLAY:-0}" = "1" ] && [ ${#DTBO_ARRAY[@]} -gt 0 ]; then
+        echo "=== Applying overlay ...... ==="
+	echo "Applying overlay，merge ${#DTBO_ARRAY[@]} dtbo"
+
+        # merge
+        if merge_overlays "${DTBO_ARRAY[@]}"; then
+            verify_merge "$OUTPUT_DTB"
+            mv "$OUTPUT_DTB" "$APPLY_DTB"
+	    rm /boot/$LINK_DTB
+	    ln -sf $APPLY_DTB /boot/$LINK_DTB
+            echo "Overlay is applied"
+        else
+            restore_original_dtb
+        fi
+    else
+        echo "Overlay is not enable or dtbo is null !"
+        restore_original_dtb
+    fi
+}
+
+main "$@"
+

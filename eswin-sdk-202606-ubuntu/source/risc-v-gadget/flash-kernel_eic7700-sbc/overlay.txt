@@ -1,0 +1,4 @@
+# dtb overlay
+
+enable_overlay=0
+#dtbo = 

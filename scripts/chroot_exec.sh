@@ -4,8 +4,10 @@ set -euo pipefail
 MODEL=${1:-P550}
 shift || true
 WORKSPACE=${WORKSPACE:-/workspace}
-SDK_DIR=${SDK_DIR:-$WORKSPACE/eswin-sdk-20250730}
-ROOTFS_DIR=${ROOTFS_DIR:-$SDK_DIR/$MODEL/output/rootfs}
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/sdk_common.sh"
+sdk_export_selection
+ROOTFS_DIR=${ROOTFS_DIR:-$SDK_OUTPUT_DIR/rootfs}
 
 if ! mountpoint -q "$ROOTFS_DIR"; then
     echo "rootfs is not mounted: $ROOTFS_DIR" >&2

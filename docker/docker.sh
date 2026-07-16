@@ -5,10 +5,23 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORKSPACE_PATH="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose-dev.yaml"
 SERVICE_NAME="cross-proj"
-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-cross-proj}"
 COMPOSE_BIN=""
-IMAGE_NAME="${IMAGE_NAME:-cross-proj-p550:20250730}"
-CONTAINER_NAME="${CONTAINER_NAME:-cross-proj-$(id -un)}"
+SDK_VERSION="${SDK_VERSION:-20250730}"
+if [ -z "${COMPOSE_PROJECT_NAME:-}" ]; then
+  if [ "$SDK_VERSION" = "20250730" ]; then
+    COMPOSE_PROJECT_NAME="cross-proj"
+  else
+    COMPOSE_PROJECT_NAME="cross-proj-${SDK_VERSION}"
+  fi
+fi
+IMAGE_NAME="${IMAGE_NAME:-cross-proj-p550:${SDK_VERSION}}"
+if [ -z "${CONTAINER_NAME:-}" ]; then
+  if [ "$SDK_VERSION" = "20250730" ]; then
+    CONTAINER_NAME="cross-proj-$(id -un)"
+  else
+    CONTAINER_NAME="cross-proj-${SDK_VERSION}-$(id -un)"
+  fi
+fi
 DOCKERFILE_PATH="${SCRIPT_DIR}/Dockerfile"
 
 if [ -z "${DOCKER_USER:-}" ]; then DOCKER_USER="$(id -un)"; fi
@@ -16,7 +29,7 @@ if [ -z "${DOCKER_USER_ID:-}" ]; then DOCKER_USER_ID="$(id -u)"; fi
 if [ -z "${DOCKER_GRP:-}" ]; then DOCKER_GRP="$(id -gn)"; fi
 if [ -z "${DOCKER_GRP_ID:-}" ]; then DOCKER_GRP_ID="$(id -g)"; fi
 
-export WORKSPACE_PATH IMAGE_NAME CONTAINER_NAME DOCKER_USER DOCKER_USER_ID DOCKER_GRP DOCKER_GRP_ID COMPOSE_PROJECT_NAME
+export WORKSPACE_PATH IMAGE_NAME CONTAINER_NAME DOCKER_USER DOCKER_USER_ID DOCKER_GRP DOCKER_GRP_ID COMPOSE_PROJECT_NAME SDK_VERSION
 
 compose() {
   if [ -z "${COMPOSE_BIN}" ]; then
@@ -134,6 +147,7 @@ show_status() {
   echo "compose:   ${COMPOSE_FILE}"
   echo "project:   ${COMPOSE_PROJECT_NAME}"
   echo "service:   ${SERVICE_NAME}"
+  echo "sdk:       ${SDK_VERSION}"
   echo "image:     ${IMAGE_NAME}"
   echo "container: ${CONTAINER_NAME}"
   docker images --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.Size}}' | grep -F "${IMAGE_NAME%:*}:" || true

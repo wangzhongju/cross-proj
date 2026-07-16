@@ -1,57 +1,174 @@
 # cross-proj 快速命令
 
-# 构建并启动 Docker 容器，容器由 docker-compose-dev.yaml 管理
+## 1. Docker 环境
+
+在宿主机项目根目录只负责构建和启动容器：
+
+```bash
+cd /home/cdky/workspace/github/cross-proj
+
+# 默认 SDK_VERSION=20250730
 ./docker/docker.sh compile
 ./docker/docker.sh start
 
-# 进入容器后统一在 /workspace 操作
+# 202606 版本
+SDK_VERSION=202606 ./docker/docker.sh compile
+SDK_VERSION=202606 ./docker/docker.sh start
+```
+
+后续验证流程均进入容器后执行，统一在 `/workspace` 操作：
+
+```bash
 cd /workspace
+```
 
+## 2. 生成可挂载镜像/文件系统
 
-# make_desktop_images 构建前准备；SSH 中断后用 recover 清理本工程残留
-./scripts/prepare_desktop_build_env.sh setup
-./scripts/prepare_desktop_build_env.sh status
-./scripts/prepare_desktop_build_env.sh recover
+### 2.1 20250730：生成 root/boot ext4
 
-# 应用 SDK 兼容性补丁，所有 source 修改都在该脚本中维护
+20250730 使用旧版 `mkimg` 流程，最终会生成：
+
+```text
+eswin-sdk-20250730/P550/output/root-P550-*.ext4
+eswin-sdk-20250730/P550/output/boot-P550-*.ext4
+```
+
+容器内完整生成流程：
+
+```bash
+cd /workspace
+unset SDK_VERSION
 ./scripts/patch_sdk_sources.sh
-
-# 构建精简系统：bootloader + kernel + minimal root/boot ext4
 ./scripts/build_minimal_system.sh P550
+```
 
-# 构建桌面系统
-source ./scripts/source_sdk_env.sh P550
-cd /workspace/eswin-sdk-20250730
-make_desktop_images
+### 2.2 202606：生成完整 ubuntu-image .img
+
+202606 使用官方 Ubuntu 24.04 `ubuntu-image` 流程，最终会生成：
+
+```text
+eswin-sdk-202606-ubuntu/eic7700-hifive-premier-p550/output/eic7700-hifive-premier-p550-ubuntu-24.04-preinstalled-server-riscv64-*.img
+```
+
+容器内完整生成流程：
+
+```bash
 cd /workspace
+export SDK_VERSION=202606
+./scripts/patch_sdk_sources.sh
+./scripts/build_minimal_system.sh P550
+```
 
-# 挂载最新 root/boot ext4；挂载前会把 rootfs 扩容到默认至少 10G
-./scripts/chroot_mount.sh mount P550
+说明：202606 的 `patch_sdk_sources.sh` 会把官方 `make_all()` 修正为 `make_bootchain -> make_kernel -> make_images`，所以从 `build_minimal_system.sh` 入口执行即可生成 bootloader、kernel deb 和最终 `.img`。
 
-# 检查 chroot 软件包状态
-./scripts/chroot_exec.sh P550 'dpkg --audit && apt-get check'
+## 3. 仅使用已生成产物验证挂载/卸载
 
-# 在 chroot 中扩展依赖，例如 yaml-cpp
-./scripts/chroot_exec.sh P550 'apt update && apt install -y libyaml-cpp-dev'
+以下流程不执行镜像编译，只使用 `output` 中已经生成的文件。`setup` 会挂载 rootfs，并把挂载后的 rootfs 链接为 `/opt/riscv/sysroot`；`cleanup` 会先恢复原工具链 sysroot，再卸载 rootfs 和 loop 设备。
 
-# 安装 yolov5s 交叉编译依赖
-./scripts/install_chroot_deps.sh P550
+### 3.1 20250730 root/boot ext4
 
-# 链接 mounted rootfs 为 /opt/riscv/sysroot
-./scripts/use_rootfs_sysroot.sh link P550
+```bash
+cd /workspace
+unset SDK_VERSION
 
-# 交叉编译 yolov5s
+./scripts/riscv_env_setup.sh /workspace P550 status
+./scripts/riscv_env_setup.sh /workspace P550 setup
+readlink -f /opt/riscv/sysroot
+./scripts/riscv_env_setup.sh /workspace P550 exec 'cat /etc/os-release | sed -n "1,4p"; uname -m; test -d /mnt/workspace && echo workspace-bind-ok'
+./scripts/riscv_env_setup.sh /workspace P550 cleanup
+./scripts/riscv_env_setup.sh /workspace P550 status
+```
+
+### 3.2 202606 output/*.img
+
+```bash
+cd /workspace
+export SDK_VERSION=202606
+
+./scripts/riscv_env_setup.sh /workspace P550 status
+./scripts/riscv_env_setup.sh /workspace P550 setup
+readlink -f /opt/riscv/sysroot
+./scripts/riscv_env_setup.sh /workspace P550 exec 'cat /etc/os-release | sed -n "1,4p"; uname -m; test -d /mnt/workspace && echo workspace-bind-ok'
+./scripts/riscv_env_setup.sh /workspace P550 cleanup
+./scripts/riscv_env_setup.sh /workspace P550 status
+```
+
+## 4. 交叉编译验证
+
+交叉编译验证会复用第 3 节的挂载和 `/opt/riscv/sysroot` 链接流程，并在编译前执行 `install_chroot_deps.sh` 补齐 rootfs 开发依赖。脚本执行结束会自动清理挂载；如需保留挂载状态用于排查，可临时设置 `KEEP_MOUNT=1`；如 rootfs 依赖已经确认完整，可设置 `SKIP_DEPS=1` 快速复跑。
+
+92 服务器访问官方 `ports.ubuntu.com` 不稳定，依赖脚本默认把 Ubuntu ports 源切到清华镜像；如需指定其它镜像，可设置：
+
+```bash
+export APT_UBUNTU_PORTS_MIRROR=http://mirrors.ustc.edu.cn/ubuntu-ports
+```
+
+### 4.1 20250730：yolov5s
+
+```bash
+cd /workspace
+unset SDK_VERSION
+./scripts/verify_cross_compile.sh /workspace P550
+```
+
+等价的手工流程：
+
+```bash
+cd /workspace
+unset SDK_VERSION
+./scripts/riscv_env_setup.sh /workspace P550 setup
+./scripts/riscv_env_setup.sh /workspace P550 deps
 source ./scripts/source_sdk_env.sh P550
 cd /workspace/yolov5s/src
 ./build.sh /opt/riscv/sysroot
 file build/sample_npu
 riscv64-unknown-linux-gnu-readelf -h build/sample_npu | grep -E 'Machine|Flags'
-
-# 清理挂载并恢复原工具链 sysroot
 cd /workspace
 ./scripts/riscv_env_setup.sh /workspace P550 cleanup
+```
 
-# 修复已生成的桌面 root.ext4 中未完成的 supertuxkart/apt 状态
-# 该脚本会在 chroot 外用 dpkg --root 安装 supertuxkart-data，避免 qemu 解压大包失败。
+### 4.2 202606：proj/media-agent/third_party/algorithm
+
+```bash
+cd /workspace
+export SDK_VERSION=202606
+./scripts/verify_cross_compile.sh /workspace P550
+# 跳过 rootfs/chroot 依赖安装步骤，只做挂载、链接 /opt/riscv/sysroot、加载 SDK 环境和交叉编译验证
+SKIP_DEPS=1 ./scripts/verify_cross_compile.sh /workspace P550
+```
+
+等价的手工流程：
+
+```bash
+cd /workspace
+export SDK_VERSION=202606
+./scripts/riscv_env_setup.sh /workspace P550 setup
+./scripts/riscv_env_setup.sh /workspace P550 deps
+source ./scripts/source_sdk_env.sh P550
+cd /workspace/proj/media-agent/third_party/algorithm
+./build.sh --target riscv64 --sysroot /opt/riscv/sysroot -q -t
+artifact=$(find build-riscv64 -type f -name '*.so' -print -quit)
+file "$artifact"
+riscv64-unknown-linux-gnu-readelf -h "$artifact" | grep -E 'Machine|Flags'
+cd /workspace
+./scripts/riscv_env_setup.sh /workspace P550 cleanup
+```
+
+`SDK_VERSION=20260630` 会被脚本兼容解析为 202606，仍使用 `eswin-sdk-202606-ubuntu`。
+
+## 5. 其他维护命令
+
+make_desktop_images 构建前准备；SSH 中断后用 `recover` 清理本工程残留：
+
+```bash
+./scripts/prepare_desktop_build_env.sh setup
+./scripts/prepare_desktop_build_env.sh status
+./scripts/prepare_desktop_build_env.sh recover
+```
+
+修复已生成的桌面 `root.ext4` 中未完成的 `supertuxkart/apt` 状态：
+
+```bash
 ./scripts/repair_desktop_rootfs.sh P550
 ./scripts/chroot_exec.sh P550 'dpkg --audit && apt-get check'
+```

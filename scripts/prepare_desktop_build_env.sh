@@ -3,9 +3,11 @@ set -euo pipefail
 
 ACTION=${1:-status}
 WORKSPACE=${WORKSPACE:-/workspace}
-SDK_DIR=${SDK_DIR:-$WORKSPACE/eswin-sdk-20250730}
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/sdk_common.sh"
+sdk_export_selection
 MAX_LOOP=${MAX_LOOP:-127}
-PROJECT_PATTERNS=${PROJECT_PATTERNS:-/workspace/eswin-sdk-20250730|/home/cdky/workspace/github/cross-proj}
+PROJECT_PATTERNS=${PROJECT_PATTERNS:-/workspace/eswin-sdk-[^[:space:]]+|/home/cdky/workspace/github/cross-proj}
 
 if [ "$(id -u)" -ne 0 ]; then
   exec sudo -E bash "$0" "$@"

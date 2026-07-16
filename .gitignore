@@ -25,3 +25,5 @@ linux-eswin
 uboot-eswin
 opensbi-eswin
 proj/*
+
+eic7700-hifive-premier-p550

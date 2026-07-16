@@ -1,0 +1,39 @@
+---
+volumes:
+  riscv:
+    schema: gpt
+    bootloader: grub
+    structure:
+      - name: EFI System
+        type: C12A7328-F81F-11D2-BA4B-00A0C93EC93B
+        filesystem: vfat
+        filesystem-label: esp
+        size: 100M
+        role: system-boot
+        content:
+          - source: grub/grubriscv64.efi
+            target: EFI/boot/bootriscv64.efi
+          - source: grub/grubriscv64.efi
+            target: EFI/ubuntu/grubriscv64.efi
+          - source: grub/grub.cfg
+            target: EFI/debian/grub.cfg
+          - source: grub/grub.cfg
+            target: EFI/ubuntu/grub.cfg
+          - source: dtb/
+            target: dtb/
+      - name: CIDATA
+        type: 0FC63DAF-8483-4772-8E79-3D69D8477DE4
+        filesystem: vfat-16
+        filesystem-label: CIDATA
+        size: 4M
+        content:
+          - source: cidata/meta-data
+            target: meta-data
+          - source: cidata/user-data
+            target: user-data
+      - name: root
+        type: 0FC63DAF-8483-4772-8E79-3D69D8477DE4
+        filesystem: ext4
+        filesystem-label: writable
+        size: 3072M
+        role: system-data

@@ -1,0 +1,1 @@
+deb [arch=riscv64 signed-by=/usr/share/keyrings/esos-archive-keyring.gpg allow-insecure=yes]  https://archive.eswincomputing.com/ubuntu/esos-core/ esos-core main

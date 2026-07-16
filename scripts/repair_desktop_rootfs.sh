@@ -3,8 +3,10 @@ set -euo pipefail
 
 MODEL=${1:-P550}
 WORKSPACE=${WORKSPACE:-/workspace}
-SDK_DIR=${SDK_DIR:-$WORKSPACE/eswin-sdk-20250730}
-ROOTFS_DIR=${ROOTFS_DIR:-$SDK_DIR/$MODEL/output/rootfs}
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/sdk_common.sh"
+sdk_export_selection
+ROOTFS_DIR=${ROOTFS_DIR:-$SDK_OUTPUT_DIR/rootfs}
 DATA_DEB=$(find "$WORKSPACE/packages" -maxdepth 1 -type f -name 'supertuxkart-data_*.deb' | sort | tail -n 1)
 MAIN_DEB=$(find "$WORKSPACE/packages" -maxdepth 1 -type f -name 'supertuxkart_[0-9]*.deb' | sort | tail -n 1)
 

@@ -1,0 +1,189 @@
+---
+name: ubuntu-server-riscv64-preinstalled
+display-name: Ubuntu Server RISC-V preinstalled
+revision: 1
+architecture: riscv64
+series: noble
+class: preinstalled
+#kernel: linux-eic7702
+gadget:
+  #url: "https://github.com/guopf307/risc-v-gadget"
+  url: "file://"
+  #type: "git"
+  type: "directory"
+  #branch: "ubuntu-d560"
+rootfs:
+  archive: ubuntu
+  sources-list-deb822: true
+  components:
+    - main
+    - restricted
+    - universe
+    - multiverse
+  mirror: "http://ports.ubuntu.com/ubuntu-ports/"
+  pocket: updates
+  seed:
+    urls:
+      # Vcs: https://git.launchpad.net/~ubuntu-core-dev/ubuntu-seeds/+git/ubuntu
+      - "https://git.launchpad.net/~ubuntu-core-dev/ubuntu-seeds/+git/"
+    branch: noble
+    names:
+      - cloud-image
+      - server
+      - minimal
+      - standard
+customization:
+  cloud-init:
+    user-data: |
+      #cloud-config
+      chpasswd:
+        expire: true
+        users:
+          - name: ubuntu
+            password: ubuntu
+            type: text
+      runcmd:
+        - sed -i 's|#[[:space:]]*WaylandEnable[[:space:]]*=.*|WaylandEnable=false|' /etc/gdm3/custom.conf
+        - usermod -aG video ubuntu
+  extra-packages:
+    - name: "firmware-sof-signed"
+    - name: "linux-firmware"
+    - name: "flash-kernel"
+    - name: "grub-efi-riscv64"
+    - name: "grub2-common"
+    - name: "eswin-eic7x-gpu"
+    - name: "ubuntu-desktop"
+    - name: "libegl-mesa0"
+    - name: "libegl1-mesa"
+    - name: "libgbm1"
+    - name: "libgl1-mesa-dri"
+    - name: "libgl1-mesa-glx"
+    - name: "libglapi-mesa"
+    - name: "libgles2-mesa"
+    - name: "libglx-mesa0"
+    - name: "libosmesa6"
+    - name: "libwayland-egl1-mesa"
+    - name: "mesa-opencl-icd"
+    - name: "mesa-va-drivers"
+    - name: "mesa-vdpau-drivers"
+    - name: "mesa-vulkan-drivers"
+    - name: "mesa-utils"
+    - name: "es-sdk-log"
+    - name: "es-sdk-numa"
+    - name: "es-sdk-common"
+    - name: "es-sdk-video-utils"
+    - name: "es-sdk-sys"
+    - name: "es-sdk-memory"
+    - name: "es-sdk-memcp"
+    - name: "es-sdk-audio"
+    - name: "es-sdk-audio-codec"
+    - name: "es-hae"
+    - name: "es-sdk-dsp"
+    - name: "es-sdk-npu"
+    - name: "es-video-common"
+    - name: "es-mpp"
+    - name: "es-sdk-ak"
+    - name: "es-sdk-video"
+    - name: "es-sdk-cipher"
+    - name: "es-sdk-isp"
+    - name: "es-thermald"
+    - name: "escl-board"
+    - name: "es-performance"
+    - name: "es-hw-watcher"
+    - name: "es-lightdm-numactl"
+    - name: "es-numa-manager"
+    - name: "es-boottime-optimizer"
+    - name: "ffmpeg"
+  extra-snaps:
+    - name: snapd
+  fstab:
+    - label: "writable"
+      mountpoint: "/"
+      filesystem-type: "ext4"
+      dump: false
+      fsck-order: 1
+    - label: "esp"
+      mountpoint: "/boot/efi"
+      filesystem-type: "vfat"
+      mount-options: "defaults"
+      dump: false
+      fsck-order: 1
+  manual:
+    make-dirs:
+      - path: /etc/default/grub.d
+        permissions: 0755
+      - path: /boot/efi
+        permissions: 0755
+      - path: /etc/flash-kernel
+        permissions: 0755
+      - path: /etc/apt/preferences.d
+        permissions: 0755
+    copy-file:
+      - destination: /etc/default/grub.d/zz_eic7702_evb.cfg
+        source: grub/zz_eic7702_evb.cfg
+      - destination: /etc/flash-kernel/db
+        source: flash-kernel/db
+      - destination: /etc/flash-kernel/machine
+        source: flash-kernel/machine
+      - destination: /tmp/customize-es.sh
+        source: customize-es.sh
+      - destination: /etc/apt/preferences.d
+        source: pin_eswincomputing_ppa
+      - destination: /etc/udev/rules.d/20-memory.rules
+        source: rules/20-memory.rules
+      - destination: /etc/udev/rules.d/21-cipher.rules
+        source: rules/21-cipher.rules
+      - destination: /etc/udev/rules.d/30-bmc.rules
+        source: rules/30-bmc.rules
+      - destination: /etc/udev/rules.d/86-ai.rules
+        source: rules/86-ai.rules
+      - destination: /etc/udev/rules.d/86-isp.rules
+        source: rules/86-isp.rules
+      - destination: /etc/udev/rules.d/98-media-mmz-drv-perm-udev.rules
+        source: rules/98-media-mmz-drv-perm-udev.rules
+      - destination: /etc/udev/rules.d/99-media-video-drv-perm-udev.rules
+        source: rules/99-media-video-drv-perm-udev.rules
+      - destination: /lib/firmware/clm_bcm43752a2_ag.blob
+        source: firmware/clm_bcm43752a2_ag.blob
+      - destination: /lib/firmware/fw_bcm43752a2_ag.bin
+        source: firmware/fw_bcm43752a2_ag.bin
+      - destination: /lib/firmware/nvram_ap12275_m2.txt
+        source: firmware/nvram_ap12275_m2.txt
+      - destination: /lib/firmware/BCM4345C5_003.006.006.1084.1156-AP6256.hcd
+        source: firmware/BCM4345C5_003.006.006.1084.1156-AP6256.hcd
+      - destination: /lib/firmware/fw_bcm43456c5_ag.bin
+        source: firmware/fw_bcm43456c5_ag.bin
+      - destination: /lib/firmware/nvram_ap6256.txt
+        source: firmware/nvram_ap6256.txt
+      - destination: /root/linux-image-kernel_ver-year-eic7702_kernel_ver-date_str_riscv64.deb
+        source: deb-packages/linux-image-kernel_ver-year-eic7702_kernel_ver-date_str_riscv64.deb
+      - destination: /root/linux-modules-kernel_ver-year-eic7702_kernel_ver-date_str_riscv64.deb
+        source: deb-packages/linux-modules-kernel_ver-year-eic7702_kernel_ver-date_str_riscv64.deb
+      - destination: /root/linux-image-eic7702_kernel_ver-date_str_riscv64.deb
+        source: deb-packages/linux-image-eic7702_kernel_ver-date_str_riscv64.deb
+      - destination: /root/linux-headers-kernel_ver-year-eic7702_kernel_ver-date_str_riscv64.deb
+        source: deb-packages/linux-headers-kernel_ver-year-eic7702_kernel_ver-date_str_riscv64.deb
+      - destination: /usr/bin/merge_dtbo
+        source: flash-kernel/merge_dtbo
+      - destination: /boot/overlay.txt
+        source: flash-kernel/overlay.txt
+    ecopy-file:
+      - destination: /usr/share/keyrings/esos-archive-keyring.gpg
+        source: deb-packages/esos-archive-keyring.gpg
+      - destination: /etc/apt/trusted.gpg.d/esos-archive-keyring.gpg
+        source: deb-packages/esos-archive-keyring.gpg
+      - destination: /etc/apt/preferences.d/pin_eswincomputing_ppa
+        source: pin_eswincomputing_ppa
+      - destination: /etc/apt/sources.list.d/eswin.list
+        source: apt/eswin.list
+      - destination: /etc/apt/apt.conf.d/99-build-retries.conf
+        source: apt/99-build-retries.conf
+      - destination: /usr/local/bin/bootloader
+        source: bin/bootloader
+    execute:
+      - path: /tmp/customize-es.sh
+artifacts:
+  img:
+    - name: eic7702-d560-ubuntu-24.04-preinstalled-server-riscv64-RELEASE.img
+  manifest:
+    name: eic7702-d560-ubuntu-24.04-preinstalled-server-riscv64-RELEASE.manifest

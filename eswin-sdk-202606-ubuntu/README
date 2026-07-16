@@ -1,0 +1,31 @@
+compile env:
+    os： ubunut22.04
+	network： ports.ubuntu.com launchpad.net
+	User permissions： sudo
+
+install tools:
+    sudo apt-get update
+    sudo apt-get install python3.10
+    sudo apt install -y python3-pip
+    sudo pip install tomli
+    sudo apt-get install -y git snapd qemu-user-static ubuntu-dev-tools
+    sudo systemctl restart systemd-binfmt
+    sudo update-binfmts --enable
+    sudo apt-get install -y germinate  debootstrap
+    sudo update-binfmts --display | grep riscv
+
+install toolchain：
+    wget https://github.com/riscv-collab/riscv-gnu-toolchain/releases/download/2024.04.12/riscv64-glibc-ubuntu-22.04-gcc-nightly-2024.04.12-nightly.tar.gz
+    sudo tar -xf riscv64-glibc-ubuntu-22.04-gcc-nightly-2024.04.12-nightly.tar.gz -C /opt
+
+
+compile:
+    1. source env：
+	       source setenv.sh
+    2. choice board type
+    3. compile bootchain： 
+	       make_bootchain
+    4. compile kernel：
+	       make_kernel
+    5. compile kernel and images： 
+	       make_images

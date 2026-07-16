@@ -4,8 +4,10 @@ set -euo pipefail
 ACTION=${1:-link}
 MODEL=${2:-P550}
 WORKSPACE=${WORKSPACE:-/workspace}
-SDK_DIR=${SDK_DIR:-$WORKSPACE/eswin-sdk-20250730}
-ROOTFS_DIR=${ROOTFS_DIR:-$SDK_DIR/$MODEL/output/rootfs}
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/sdk_common.sh"
+sdk_export_selection
+ROOTFS_DIR=${ROOTFS_DIR:-$SDK_OUTPUT_DIR/rootfs}
 SYSROOT=/opt/riscv/sysroot
 BACKUP=/opt/riscv/sysroot.toolchain
 

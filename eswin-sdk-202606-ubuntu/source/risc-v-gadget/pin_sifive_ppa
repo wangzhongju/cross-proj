@@ -1,0 +1,3 @@
+Package: *
+Pin: release o=LP-PPA-sifive-sandbox-release
+Pin-Priority: 1001
