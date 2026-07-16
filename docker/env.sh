@@ -67,6 +67,9 @@ main() {
   ensure_user
   configure_sudo
   configure_shell
+
+  echo "PS1='\[\033[01;32m\]\u@\[\033[01;35m\]\h\[\033[00m\]:\[\033[01;36m\]\w\[\033[00m\]$ '" >> /home/${USER_NAME}/.bashrc
+
   echo "user ready: ${USER_NAME}(${USER_ID}:${GROUP_ID}), sudo NOPASSWD enabled"
 }
 
