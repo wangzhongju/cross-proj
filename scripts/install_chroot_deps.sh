@@ -32,10 +32,14 @@ if [ -n "${APT_UBUNTU_PORTS_MIRROR:-}" ]; then
       "$file"
   done < <(find /etc/apt -type f \( -name "*.list" -o -name "*.sources" \) -print0)
 fi
+while IFS= read -r -d "" file; do
+  sed -i -e "s/^Suites: noble$/Suites: noble noble-updates/" "$file"
+done < <(find /etc/apt -type f -name "*.sources" -print0)
 apt-get "${APT_OPTS[@]}" update
 apt-get "${APT_OPTS[@]}" install -y \
   gcc g++ build-essential cmake pkg-config \
   libc6-dev libstdc++-14-dev \
+  libnuma-dev libfreetype-dev libharfbuzz-dev \
   ffmpeg libavformat-dev libavcodec-dev libavutil-dev libswscale-dev libswresample-dev \
   libprotobuf-dev \
   es-sdk-log es-sdk-memory es-sdk-memcp es-sdk-cipher es-sdk-numa \
