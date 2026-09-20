@@ -7,6 +7,61 @@
 - 同一问题存在多轮定位时按阶段连续记录，并明确后续方案是否取代前一方案；不再创建重复日期标题。
 - 每项记录应覆盖所有受影响工程、最终采用方案、构建环境、部署位置及验证结论，避免只在子工程保留零散说明。
 
+## 2026-09-20
+
+### 1. RK3588 官方 SDK aarch64 交叉编译环境
+
+#### 环境与工程修改
+
+- 容器入口统一回 `docker/`：删除 `rk3588-sdk` 内的独立 Dockerfile、`.dockerignore` 和 `container.sh`，`docker/docker.sh start` 现在创建单一 `cross-proj-<user>` 容器，同时暴露 RISC-V 工具链和瑞芯微 aarch64 工具链。默认 `SDK_VERSION=202606`；`SDK_VERSION=202507` 映射到 `eswin-sdk-20250730` 并在同一容器上重建环境，aarch64 能力保持可用。
+- `rk3588-sdk/scripts` 从 13 个脚本精简为 `setup-toolchain.sh`、`board-protoc.sh`、`run-media-agent-build.sh` 和 `run-media-agent-package.sh`；删除密码读取、目录传输、板端验证、独立容器及 RagFlow 管理脚本。根目录 `README.md` 和新建的 `run.md` 统一记录 RISC-V `.ext4`/`.img` 挂载、chroot 扩展、RK3588 rootfs 的等价实现和 media-agent 双架构构建方式；删除 `rk3588-sdk/README.md`、`rk3588-sdk/run.md` 和旧 `run.readme`。
+- `rk3588-sdk/` 集中保存官方 SDK GCC 10.3.1、79 板 Ubuntu 22.04 编译 sysroot、ARM 平台依赖和编译入口；容器由根目录 `docker/` 统一提供。SDK 工具链固定提交 `adbb295a970c4b39dc487c95226fe84d2c460072`，两套编译器在统一容器中分别报告 `aarch64-none-linux-gnu` 和 `riscv64-unknown-linux-gnu`。
+- 79 板为 Ubuntu 22.04.5、aarch64、glibc 2.35。92 对板端开发头文件和库只读同步到 `rk3588-sdk/sysroot`，algorithm 的 `arm/ubuntu22.04` 预编译依赖同步到 `rk3588-sdk/algorithm-thirdparty`；未生成或挂载系统镜像。板端 protobuf 3.12.4 由 QEMU 调用同版本 `protoc`；链接使用板端 `libstdc++.so.6` 以满足 `GLIBCXX_3.4.29`。
+- `media-agent` 的 aarch64 CMake toolchain 按 `RK3588_SDK_ROOT` 选择 SDK GCC、板端 sysroot、Ubuntu 22.04 algorithm 依赖和多架构头文件；未设置时保留原发行版交叉编译默认值。Debian 打包入口也以 8 并发通过，但本任务交付物是 `build-aarch64/install` 目录，不使用 `.deb`。RISC-V 分支未修改。
+
+#### 验证状态
+
+- 默认 `./docker/docker.sh start` 已在 92 重建统一容器，容器内 `SDK_VERSION=202606`，两套编译器分别报告 `riscv64-unknown-linux-gnu` 和 `aarch64-none-linux-gnu`，目标 `protoc` 为 3.12.4。`SDK_VERSION=202507 ./docker/docker.sh start` 已验证同一容器切换为内部版本 `20250730`，两套编译器仍同时可用；验证后恢复默认 202606。
+- 查明 `libcdky_event.so` 约 60 MiB、`libcdky_track.so` 约 24 MiB 的主要原因是 `build.sh` 实际默认使用 `RelWithDebInfo`，安装库包含完整 DWARF 调试信息且未 strip。临时副本执行 `--strip-debug` 后分别约 1.4 MiB、722 KiB。将脚本默认值修正为帮助文本声明的 `Release` 后，在统一容器以 `--jobs 8 --clean --install` 完整构建成功；最终两库分别为 1,414,056 和 741,032 bytes，SHA-256 为 `10d283179ec7661c91afaa8e2a26ffc252ab5d404e781c7cb59280715739b6c7`、`f8265f97680438f9344d5e4ae83cd9d150ef7fbcb764d060c1ebccf78e34960e`。
+- 92 总内存约 14 GiB。16 并发曾触及 10 GiB 容器限额后中止；后续统一使用 8 并发，并在编译窗口按根目录 `run.md` 记录的 Compose 命令暂停、恢复 RagFlow。`build-aarch64/install` 最初为 254 MiB，含 21 个 AArch64 ELF；主程序 SHA-256 为 `b461855da9f88e9b6f64399615d236f4faae95c6fb83f3d032927f7b2dac4e19`。
+- `./scripts/package_deb.sh --target aarch64 --jobs 8 --install` 也通过，用于验证工程原有打包入口；生成的 `.deb` 曾在 79 的测试目录临时解包检查，未安装，随后清理。实际交付使用 rsync 将整个安装目录复制至 79 的 `/home/firefly/workspace/test/install`。
+- 79 上核对主程序 SHA-256 一致，24 个符号链接全部可解析且留在安装目录内，21 个 AArch64 ELF 的 `ldd` 依赖均无缺失，主程序解释器为 `/lib/ld-linux-aarch64.so.1`。本次只检查文件和动态链接，不运行新程序；原 `/opt/media_agent/media_agent` 仍在运行，未停止或替换。
+- 完整复现步骤、RagFlow 停止与恢复流程、`.deb` 的构建和后续部署边界，以及两种架构 rootfs 的镜像、挂载和 chroot 流程统一见根目录 `run.md`。79 已有运行中的 `/opt/media_agent`；`.deb` 的维护脚本可能停止服务、删除旧安装目录并启动新服务，故本次不执行正式安装或升级。RagFlow 五项服务已恢复，四项带健康检查的服务均为 healthy；本次没有执行 RK3588 镜像生成、挂载、chroot 或刷机。
+
+## 2026-09-15
+
+### 1. SCJJ EIC7700 完整 INT8 算子量化、评估与打包
+
+#### 量化配置与工具链
+
+- 在 91 服务器 `/home/cdky/workspace/gitlab/vision-pipeline` 固定使用 `scjj_detect_cls5_yolov8s_ep86_p09559_map5009675_map509507598_20260902_190437_640.pt`，训练/验证集分别为 2588/685 张，量化校准和分析分别使用 200/20 张训练图片。
+- `vision-pipeline/configs/eic7700_pipeline.json` 的 SCJJ 配置改为 `quantized_dtype=int8`、`output_dtype=int16`，且 `nodes_i8/nodes_i16/nodes_fp16` 均为空。所有可量化算子使用 INT8，三个 YOLOv8 检测输出仅为兼容当前 `ES_AK_DSP_DetectionOut` ABI 保持 INT16。
+- `vision-pipeline/scripts/eic7700/quantize.sh` 增加 `output_dtype`、`nodes_i16`、`nodes_fp16` 的校验与透传，并修复空节点列表在 shell 字段解析时的位置保持问题。部署文档新增全局精度、按 ONNX 节点覆盖和输出精度的优先级及示例，明确混合量化配置为全局 INT16、`/model.0/conv/Conv` INT8、三个输出 INT16。
+- 额外验证严格的 `quantized_dtype=int8, output_dtype=int8`：EsQuant 和 EsAAC 均成功，板端 NPU-only 达 40.919 FPS；统一流水线随后按预期拒绝 INT8 三输出的 DetectionOut ABI。因此 `1_7` 只保留为研究对照，不能作为当前 algorithm 部署包。
+
+#### 可部署包与精度评估
+
+- 最终生成并检查通过模型级包 `weights/eic7700/scjj/scjj_detect_eic7700_1_8.pkg`，SHA-256 为 `2786e5c1244f396739054a53821c57731c56b950133c57835667e966a0572d6e`；包内 `.model` 和量化表 SHA-256 分别为 `aed445e936db00be75031f4e1e0e26ae0df8439dfc3437a7e8f2500ac1376c98`、`d2fd0fe0a94fe0ec71880607bff9ec9440c4a6b0b03a8d0740b15bf08f3a688e`。量化评估阶段只生成模型级包，未生成或覆盖平台事件包。
+- PT 与 EIC7700 使用完全相同的 685 张验证图片及 `confidence=0.001, iou=0.7, max_det/topk=300` 导出条件。PT/板端 mAP50-95 为 `0.729074/0.709784`，差值 `-0.019290`；mAP50 为 `0.950991/0.946465`。固定阈值 0.55 的 F1 为 `0.941680/0.940195`，同类框保留率 `98.523%`、平均 IoU `0.952291`。
+- 默认阈值扫描点中，PT 与板端最佳 F1 均位于 0.30，分别为 `0.946965/0.944664`；是否调整生产阈值需结合现场误报成本，不自动改动 0.55 配置。
+- 评估前 127 在线 `media_agent`（PID 765813）占用全局 DSP 状态，生产库冒烟返回 `0xa014602c`；本轮未停止或重启该进程。板端全量评估使用独立目录及临时隔离构建库，在 DSP DetectionOut 初始化失败后走 CPU YOLOv8 后处理，共处理 685/685 张、退出码 0；92 临时源码改动已恢复，未覆盖板端生产 `bin/` 或 `lib/`。评估完成后的状态检查已不再看到 `media_agent` 进程，其退出不是本轮主动操作，未在未知平台任务状态下擅自拉起。正式发布前仍需在 DSP 空闲窗口补做生产库 DetectionOut 冒烟与平台任务验收。
+- 完整流程、哈希、分项精度和复现边界记录于 `proj/media-agent/third_party/vision-pipeline/docs/pt_to_eic7700_deployment.md` 第 14 节；91 服务器证据目录为 `evaluation/yolov8_det_quantization/work/scjj_full_int8_20260915_145444`。
+
+#### 官方模型输出基准与平台事件包发布
+
+- 在 127 EIC7700 板端使用官方 NPU Runtime 读取 `pipeline_20260630/models/yolov5s_git_1x3x416x416.model`（SHA-256 `68ffdf69d5b0bf1149ffdc007248f875217f00d2ff8eba1131a1c48a307ac11b`）描述符：输入 `[1,3,416,416]` 为 INT8，三路输出 `[1,255,13,13]`、`[1,255,26,26]`、`[1,255,52,52]` 均为 INT16。该官方基准进一步确认 algorithm 可部署的检测模型应采用 INT8 量化主体、INT16 输出边界；部署文档补充了该结论及 `.model`/运行时 JSON/DetectionOut 三层验收要求。
+- 部署文档扩展 `nodes_i8/nodes_i16/nodes_fp16` 节点名获取方法：按 ONNX 拓扑打印 `op_type/node.name/input/output`、筛选常见可量化算子、从 tensor 名反查生产者/消费者，并明确图输出 tensor 由 `output_dtype` 管理，不能作为节点名填入覆盖列表。
+- 在 91 服务器以已评估的 SCJJ `1_8` 模型发布 `hardhat-detection_eic7700_1_8.pkg` 和 `vest-detection_eic7700_1_8.pkg`，两者大小均为 14,468,261 bytes、SHA-256 均为 `ba4a329aa83074a3c1656d86f6b9afaa231f4d95a85705cf8d8c1f552eed6081`。逐包解密校验确认完整保留 `0:person, 1:hardhat, 2:vest, 3:no_hardhat, 4:no_vest`，三路输出均为 INT16，包内模型和量化表哈希与模型级 `1_8` 包一致；未覆盖 `1_4/1_5/1_6` 历史版本。
+- 本次只发布平台事件包，未部署或重启板端业务；仍需在 DSP 空闲窗口完成两个事件包的 production algorithm DetectionOut 冒烟和真实平台任务验收。
+
+### 2. Media Agent 同事件六路推理并发修复重新部署
+
+- 127 板端原部署在 6 路相同事件下总吞吐固定约 56 FPS、NPU 使用率约 70%。旧日志确认所有相同 pkg key 只复用一个单 worker `ModelExecutor`，且部署配置仍为 `npu_max_inflight=1`，同模型任务因此在单 lane 串行执行。
+- `algorithm/eic7700Infer` 的 `ModelService` 改为按模型 key 维护最多 `npu_max_inflight` 个 executor lane；新流先创建 lane，达到上限后按最少使用者轮转复用。`EdgeInfer` 在申请 executor 前按模型 key 去重，随包 `EsInfer.yaml` 将并发上限设为 3，与 Media Agent 的三个推理线程一致；配置缺失或非法时仍回退为 1。
+- 本地补丁仅同步至 92 的 `/home/cdky/workspace/github/cross-proj` 对应文件；在 SDK 202606 容器 `cross-proj-202606-cdky` 内分别执行 Algorithm `--target riscv64 --jobs 16 --install --build-tests` 和 Media Agent `--target riscv64 --jobs 16 --install`，两项构建退出码均为 0。
+- 停止 127 原进程后，仅替换 `/home/ubuntu/workspace/test/media_agent` 下的主程序、`lib/libcdky_eic7700_infer.so` 和 `config/EsInfer.yaml`，未覆盖现场平台连接配置。三项 SHA-256 分别为 `f819a2e229ca4ae4d4a18262077fe2ad237194f3652b3116f90f9ba0fcb99ea8`、`e2561ae667161f2d99d3092276b910ed736d7dab3ef1142d48d82ee4a68b09ed`、`ac7fb6d440a875dadf28ea562088558fcb27e308e17fd4cc84994752f89f3a65`；旧文件备份于 `/home/ubuntu/workspace/test/backups/media_agent_before_same_model_pool_20260915_222223/`。
+- 重启后平台自动恢复 6 路 hardhat 同模型任务，日志确认依次创建 3 个 lane，后 3 路均匀复用，任务状态为 `6/6/0/0`。独立 30.019 秒驱动计数窗口完成 2199 次推理，吞吐 73.253 FPS、NPU busy 92.764%；业务日志稳态 72.6～73.8 FPS，未发现推理/NPU 错误。相较原 56 FPS/约 70%，同模型串行瓶颈已解除；4～6 路继续受该模型约 75～79 FPS 的板端物理吞吐上限约束，不应按输入路数继续线性增长。
+
 ## 2026-09-14
 
 ### 1. Algorithm 测试参数核对与官方 YOLOv5s 基线入口恢复

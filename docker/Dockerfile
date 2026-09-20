@@ -25,6 +25,8 @@ RUN tar -xf /tmp/toolchain.tar.xz -C /opt \
     && /opt/riscv/bin/riscv64-unknown-linux-gnu-gcc --version
 
 ENV PATH=/opt/riscv/bin:${PATH}
+ENV RK3588_SDK_ROOT=/workspace/rk3588-sdk
+ENV PATH=/workspace/rk3588-sdk/compat-bin:/workspace/rk3588-sdk/prebuilts/gcc-arm-10.3-2021.07-x86_64-aarch64-none-linux-gnu/bin:${PATH}
 ENV ARCH=riscv
 ENV CROSS_COMPILE=riscv64-unknown-linux-gnu-
 ENV LANG=en_US.UTF-8

@@ -1,134 +1,62 @@
-# P550 交叉编译环境工程化说明
+# cross-proj 双架构交叉编译环境
 
-本仓库用于在 92 服务器上构建 P550 开发板的交叉编译环境。环境基于 `ubuntu:24.04` 自建 Docker 镜像、`eswin-sdk-20250730` SDK，以及 `riscv64-glibc-ubuntu-24.04-gcc-nightly-2025.01.20-nightly.tar.xz` 工具链。
-> cd docker
-> wget https://github.com/riscv-collab/riscv-gnu-toolchain/releases/download/2025.01.20/riscv64-glibc-ubuntu-24.04-gcc-nightly-2025.01.20-nightly.tar.xz
+本仓库在一套 Ubuntu 24.04 Docker 容器中提供两条彼此隔离的交叉编译链：
 
-## 目录结构
+- **riscv64 / EIC7700**：使用 `/opt/riscv` 工具链，并将 ESWIN SDK 生成的 `.ext4` 或 `.img` rootfs 挂载为编译 sysroot。
+- **aarch64 / RK3588**：使用瑞芯微 SDK 的 GCC 10.3.1、与 RK3588 Ubuntu 22.04 运行环境一致的 sysroot，以及 ARM 平台第三方依赖。
+- 工程以 `--target riscv64` 或 `--target aarch64` 选择架构，构建目录分别为 `build-riscv64/` 和 `build-aarch64/`。
 
-```text
-docker/                         Dockerfile、docker-compose-dev.yaml、容器入口脚本
-packages/                       本地 deb 包，例如 supertuxkart 和 supertuxkart-data
-scripts/                        SDK 补丁、镜像挂载、chroot、sysroot 管理脚本
-eswin-sdk-20250730/             ESWIN SDK 20250730
-yolov5s/                        用于验证交叉编译的示例程序
-run.readme                      快速命令清单
-UPDATE.md                       从零构建和问题处理记录
-```
+## 快速开始
 
-## Docker 容器管理
-
-容器统一由 `docker/docker-compose-dev.yaml` 管理，`docker/docker.sh` 只是命令入口，风格与 `docker_new` 保持一致。
+92 服务器项目根目录执行：
 
 ```bash
 cd /home/cdky/workspace/github/cross-proj
-./docker/docker.sh compile        # 构建 cross-proj-p550:20250730 镜像
-./docker/docker.sh start          # 启动并进入容器
-./docker/docker.sh init           # 进入已启动容器
-./docker/docker.sh init 'whoami'  # 在容器中执行命令
-./docker/docker.sh status         # 查看镜像和容器状态
-./docker/docker.sh stop           # 停止并删除 compose 容器
+
+# 默认使用 ESWIN SDK 202606；启动的同一容器也支持 RK3588 aarch64
+./docker/docker.sh start
+
+# 切换旧版 riscv64 SDK；aarch64 能力保持可用
+SDK_VERSION=202507 ./docker/docker.sh start
+
+./docker/docker.sh init
 ```
 
-容器内工作目录是 `/workspace`，默认以宿主机同名用户进入，并具备免密 sudo 权限。
+`SDK_VERSION=202507` 内部映射到目录 `eswin-sdk-20250730/`；`202606` 使用 `eswin-sdk-202606-ubuntu/`。容器内工作区固定为 `/workspace`。
 
-## SDK 源码补丁原则
-
-`eswin-sdk-20250730/source` 以及 SDK 构建过程中复制到 `P550/` 下的源码，所有修改统一写入：
+## 常用编译命令
 
 ```bash
-./scripts/patch_sdk_sources.sh
-```
+# aarch64 / RK3588
+cd /workspace/proj/media-agent
+./scripts/build.sh --target aarch64 --jobs 8 --install
 
-不要直接手工修改 SDK 源码文件。这样出现新问题时可以快速定位每一处变更，也便于重新解压 SDK 后重复应用。
-
-## 构建系统镜像
-
-```bash
+# riscv64 / EIC7700，先完成 rootfs 挂载和 sysroot 链接
 cd /workspace
-./scripts/patch_sdk_sources.sh
-source ./scripts/source_sdk_env.sh P550
-cd /workspace/eswin-sdk-20250730
-make_desktop_images
-```
-
-如果只需要精简系统：
-
-```bash
-cd /workspace
-./scripts/build_minimal_system.sh P550
-```
-
-生成物位于 `/workspace/eswin-sdk-20250730/P550/output`。
-
-## 挂载 rootfs 并扩展依赖
-
-挂载脚本会先检查 ext4 文件大小，再扩容到默认至少 10G，然后挂载 root/boot：
-
-```bash
-cd /workspace
-./scripts/chroot_mount.sh mount P550
-```
-
-在 chroot 中安装额外依赖，例如 `yaml-cpp`：
-
-```bash
-./scripts/chroot_exec.sh P550 'apt update && apt install -y libyaml-cpp-dev'
-```
-
-安装 yolov5s 交叉编译所需依赖：
-
-```bash
-./scripts/install_chroot_deps.sh P550
-```
-
-清理挂载并恢复工具链 sysroot：
-
-```bash
-./scripts/riscv_env_setup.sh /workspace P550 cleanup
-```
-
-## 交叉编译 yolov5s
-
-```bash
-cd /workspace
-source ./scripts/source_sdk_env.sh P550
 ./scripts/riscv_env_setup.sh /workspace P550 setup
 ./scripts/riscv_env_setup.sh /workspace P550 deps
-cd /workspace/yolov5s/src
-./build.sh /opt/riscv/sysroot
-file build/sample_npu
-riscv64-unknown-linux-gnu-readelf -h build/sample_npu | grep -E 'Machine|Flags'
+source ./scripts/source_sdk_env.sh P550
+cd /workspace/proj/media-agent
+./scripts/build.sh --target riscv64 --jobs 8 --install
 ```
 
-期望结果为 RISC-V 64 位可执行文件，`Machine` 显示 `RISC-V`。
+默认构建类型为 `Release`。安装目录分别是：
 
-## 修复已生成的桌面 rootfs
+- `proj/media-agent/build-aarch64/install/`
+- `proj/media-agent/build-riscv64/install/`
 
-如果 `make_desktop_images` 已经生成 `root.ext4`，但日志中出现 `supertuxkart-data` 解压失败或 `apt-get check` 不通过，可在容器内执行：
+## 目录职责
 
-```bash
-cd /workspace
-./scripts/repair_desktop_rootfs.sh P550
-./scripts/chroot_exec.sh P550 'dpkg --audit && apt-get check'
-```
+| 目录 | 职责 |
+| --- | --- |
+| `docker/` | 唯一的容器镜像、Compose 和启动入口。 |
+| `packages/` | 本地 deb 包，例如 supertuxkart 和 supertuxkart-data。 |
+| `scripts/` | RISC-V SDK 选择、系统镜像构建、挂载、chroot、sysroot 和验证流程。 |
+| `eswin-sdk-20250730/` | ESWIN SDK 20250730。 |
+| `eswin-sdk-202606-ubuntu/` | ESWIN SDK 20260630。 |
+| `rk3588-sdk/` | 瑞芯微官方工具链、aarch64 sysroot、平台依赖及四个编译相关脚本。 |
+| `proj/` | 使用交叉编译环境构建的业务工程。 |
+| `docs/update.md` | 统一更新和验证记录，docs下存放交叉编译工程proj下所有工程的研发过程记录文档。 |
 
-该脚本会对 `supertuxkart-data` 使用 chroot 外的 `dpkg --root` 安装，避免 qemu-user 解压大包失败。
+完整环境创建、挂载、chroot 扩展、编译及清理步骤见 [run.md](run.md)。RK3588 脚本说明见 [rk3588-sdk/scripts/README.md](rk3588-sdk/scripts/README.md)。
 
-## 详细过程
-
-完整从零构建、系统镜像编译、chroot 扩展依赖、supertuxkart 本地 deb 安装、问题处理记录见 [UPDATE.md](UPDATE.md)。脚本作用说明见 [scripts/README.md](scripts/README.md)。
-
-## 多版本 SDK
-
-脚本默认使用 `SDK_VERSION=20250730`。官方 202606 Ubuntu SDK 放在 `eswin-sdk-202606-ubuntu` 时，可通过环境变量切换：
-
-```bash
-cd /workspace
-SDK_VERSION=202606 ./docker/docker.sh compile
-SDK_VERSION=202606 ./docker/docker.sh start
-SDK_VERSION=202606 ./scripts/patch_sdk_sources.sh
-SDK_VERSION=202606 ./scripts/build_minimal_system.sh P550
-```
-
-202606 的 P550 实际输出目录是 `eswin-sdk-202606-ubuntu/eic7700-hifive-premier-p550/output`，脚本会自动映射。

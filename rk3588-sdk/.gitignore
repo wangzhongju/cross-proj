@@ -1,0 +1,8 @@
+prebuilts/
+official-sdk/
+mount/
+sysroot/
+algorithm-thirdparty/
+compat-bin/
+artifacts/
+*.log

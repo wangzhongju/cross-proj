@@ -50,13 +50,13 @@ SSH 断线或构建被杀后，先执行：
 
 ## 多版本 SDK
 
-`sdk_common.sh` 统一解析 SDK 选择。默认 `SDK_VERSION=20250730`；切换 202606 Ubuntu SDK 时设置：
+`sdk_common.sh` 统一解析 SDK 选择。默认 `SDK_VERSION=202606`；切换旧版 SDK 时设置：
 
 ```bash
-export SDK_VERSION=202606
+export SDK_VERSION=202507
 ```
 
-兼容 `SDK_VERSION=20260630` 别名，脚本会按 202606 处理。
+`202507` 映射到目录版本 `20250730`；兼容 `SDK_VERSION=20260630` 别名并按 202606 处理。
 
 所有入口脚本都会使用同一套解析结果：`SDK_DIR`、实际 board 目录、输出目录和 SDK 布局。202606 中 `P550` 会自动映射为 `eic7700-hifive-premier-p550`。
 

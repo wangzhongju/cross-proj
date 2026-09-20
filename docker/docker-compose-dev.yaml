@@ -1,10 +1,9 @@
-version: '3.5'
 services:
   cross-proj:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ${IMAGE_NAME:-cross-proj-p550:${SDK_VERSION:-20250730}}
+    image: ${IMAGE_NAME:-cross-proj-cross:ubuntu24.04}
     container_name: ${CONTAINER_NAME:-cross-proj-dev}
     hostname: cross-proj-dev
     privileged: true
@@ -18,7 +17,9 @@ services:
       DOCKER_USER_ID: ${DOCKER_USER_ID:-1000}
       DOCKER_GRP: ${DOCKER_GRP:-dev}
       DOCKER_GRP_ID: ${DOCKER_GRP_ID:-1000}
-      SDK_VERSION: ${SDK_VERSION:-20250730}
+      SDK_VERSION: ${SDK_VERSION:-202606}
+      RK3588_SDK_ROOT: /workspace/rk3588-sdk
+      PATH: /workspace/rk3588-sdk/compat-bin:/workspace/rk3588-sdk/prebuilts/gcc-arm-10.3-2021.07-x86_64-aarch64-none-linux-gnu/bin:/opt/riscv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       HISTFILE: /workspace/.dev_bash_history
     volumes:
       - /dev:/dev

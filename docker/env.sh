@@ -52,7 +52,8 @@ configure_shell() {
   if ! grep -q "cross-proj environment" "${bashrc}"; then
     cat >>"${bashrc}" <<'BASHRC_EOF'
 # cross-proj environment
-export PATH=/opt/riscv/bin:$PATH
+export RK3588_SDK_ROOT=/workspace/rk3588-sdk
+export PATH=/workspace/rk3588-sdk/compat-bin:/workspace/rk3588-sdk/prebuilts/gcc-arm-10.3-2021.07-x86_64-aarch64-none-linux-gnu/bin:/opt/riscv/bin:$PATH
 export ARCH=riscv
 export CROSS_COMPILE=riscv64-unknown-linux-gnu-
 alias set-p550='source /workspace/scripts/source_sdk_env.sh P550'

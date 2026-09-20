@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
 sdk_canonical_version() {
-  local version=${1:-20250730}
+  local version=${1:-202606}
   case "$version" in
+    202507) echo "20250730" ;;
     20260630) echo "202606" ;;
     *) echo "$version" ;;
   esac
@@ -10,7 +11,7 @@ sdk_canonical_version() {
 
 sdk_dir_name_from_version() {
   local version
-  version=$(sdk_canonical_version "${1:-20250730}")
+  version=$(sdk_canonical_version "${1:-202606}")
   case "$version" in
     20250730) echo "eswin-sdk-20250730" ;;
     202606) echo "eswin-sdk-202606-ubuntu" ;;
@@ -25,7 +26,7 @@ sdk_resolve_dir() {
   elif [ -n "${SDK_NAME:-}" ]; then
     echo "$workspace/$SDK_NAME"
   else
-    echo "$workspace/$(sdk_dir_name_from_version "${SDK_VERSION:-20250730}")"
+    echo "$workspace/$(sdk_dir_name_from_version "${SDK_VERSION:-202606}")"
   fi
 }
 

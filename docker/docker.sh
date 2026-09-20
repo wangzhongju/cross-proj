@@ -6,24 +6,19 @@ WORKSPACE_PATH="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose-dev.yaml"
 SERVICE_NAME="cross-proj"
 COMPOSE_BIN=""
-SDK_VERSION="${SDK_VERSION:-20250730}"
-if [ -z "${COMPOSE_PROJECT_NAME:-}" ]; then
-  if [ "$SDK_VERSION" = "20250730" ]; then
-    COMPOSE_PROJECT_NAME="cross-proj"
-  else
-    COMPOSE_PROJECT_NAME="cross-proj-${SDK_VERSION}"
-  fi
-fi
-IMAGE_NAME="${IMAGE_NAME:-cross-proj-p550:${SDK_VERSION}}"
-if [ -z "${CONTAINER_NAME:-}" ]; then
-  if [ "$SDK_VERSION" = "20250730" ]; then
-    CONTAINER_NAME="cross-proj-$(id -un)"
-  else
-    CONTAINER_NAME="cross-proj-${SDK_VERSION}-$(id -un)"
-  fi
-fi
-DOCKERFILE_PATH="${SCRIPT_DIR}/Dockerfile"
-
+SDK_VERSION="${SDK_VERSION:-202606}"
+case "${SDK_VERSION}" in
+  202507) SDK_VERSION=20250730 ;;
+  20260630) SDK_VERSION=202606 ;;
+  20250730|202606) ;;
+  *)
+    echo "unsupported SDK_VERSION: ${SDK_VERSION}; use 202606 (default) or 202507" >&2
+    exit 2
+    ;;
+esac
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-cross-proj}"
+IMAGE_NAME="${IMAGE_NAME:-cross-proj-cross:ubuntu24.04}"
+CONTAINER_NAME="${CONTAINER_NAME:-cross-proj-$(id -un)}"
 if [ -z "${DOCKER_USER:-}" ]; then DOCKER_USER="$(id -un)"; fi
 if [ -z "${DOCKER_USER_ID:-}" ]; then DOCKER_USER_ID="$(id -u)"; fi
 if [ -z "${DOCKER_GRP:-}" ]; then DOCKER_GRP="$(id -gn)"; fi
@@ -66,6 +61,19 @@ remove_legacy_container() {
   fi
 }
 
+remove_deprecated_containers() {
+  local old_container
+  for old_container in \
+    "cross-proj-rk3588-$(id -un)" \
+    "cross-proj-202606-$(id -un)" \
+    "cross-proj-20250730-$(id -un)"; do
+    if docker container inspect "${old_container}" >/dev/null 2>&1; then
+      echo "remove superseded container: ${old_container}"
+      docker rm -f "${old_container}" >/dev/null
+    fi
+  done
+}
+
 init_user_env() {
   if ! container_exists; then
     echo "container is not created: ${CONTAINER_NAME}" >&2
@@ -75,19 +83,20 @@ init_user_env() {
   docker exec -u root     -e DOCKER_USER="${DOCKER_USER}"     -e DOCKER_USER_ID="${DOCKER_USER_ID}"     -e DOCKER_GRP="${DOCKER_GRP}"     -e DOCKER_GRP_ID="${DOCKER_GRP_ID}"     "${CONTAINER_NAME}" bash -lc "/tmp/cross-proj-env.sh"
 }
 
-build_image() {
-  DOCKER_BUILDKIT=1 docker build --network host -t "${IMAGE_NAME}" -f "${DOCKERFILE_PATH}" "${SCRIPT_DIR}"
-}
-
 prepare_build_env() {
   if [ -x "${WORKSPACE_PATH}/scripts/prepare_desktop_build_env.sh" ]; then
     docker exec -u root -w /workspace "${CONTAINER_NAME}" bash -lc '/workspace/scripts/prepare_desktop_build_env.sh setup'
+  fi
+  if [ -x "${WORKSPACE_PATH}/rk3588-sdk/scripts/setup-toolchain.sh" ]; then
+    docker exec -u "${DOCKER_USER}" -w /workspace "${CONTAINER_NAME}" \
+      /workspace/rk3588-sdk/scripts/setup-toolchain.sh
   fi
 }
 
 compile_image() { compose build "${SERVICE_NAME}"; }
 
 start_container() {
+  remove_deprecated_containers
   remove_legacy_container
   if ! docker image inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
     compile_image
@@ -159,7 +168,7 @@ show_help() {
 Usage: ./docker.sh <command> [command string]
 
 Commands:
-  compile    Build the Ubuntu 24.04 cross-compile image with docker compose.
+  compile    Build the Ubuntu 24.04 dual-architecture cross-compile image.
   build      Alias of compile.
   start      Start the compose container, initialize user sudo, and enter if TTY is available.
   init       Enter the running container as the host user, or run an optional command string.
@@ -172,9 +181,14 @@ Commands:
 Examples:
   ./docker.sh compile
   ./docker.sh start
+  SDK_VERSION=202507 ./docker.sh start
   ./docker.sh init
   ./docker.sh init 'cd /workspace && ./scripts/build_minimal_system.sh P550'
   ./docker.sh stop
+
+SDK selection:
+  SDK_VERSION=202606  Default RISC-V SDK; container also supports RK3588 aarch64.
+  SDK_VERSION=202507  Select the legacy RISC-V SDK; aarch64 support remains available.
 EOF
 }
 
